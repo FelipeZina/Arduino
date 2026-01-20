@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telemetria Industrial | Monitor de Ciclo</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent: #38bdf8;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .dashboard {
+            width: 100%;
+            max-width: 500px;
+            padding: 20px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 4px;
+            background: var(--accent);
+            display: none;
+        }
+
+        .card.running::before { display: block; animation: loading 2s infinite linear; }
+
+        @keyframes loading {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .brand { font-weight: 600; font-size: 0.9rem; color: var(--text-dim); letter-spacing: 1px; }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 99px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.05);
+            transition: all 0.3s;
+        }
+
+        .status-pill.active { color: var(--warning); background: rgba(245, 158, 11, 0.1); }
+        .status-pill.done { color: var(--success); background: rgba(34, 197, 94, 0.1); }
+
+        .timer-container { margin: 40px 0; }
+
+        .timer-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 6rem;
+            font-weight: 800;
+            line-height: 1;
+            color: var(--text-main);
+            transition: color 0.3s;
+        }
+
+        .running .timer-value { color: var(--accent); }
+
+        .unit { color: var(--text-dim); font-size: 1.2rem; margin-top: 10px; font-weight: 500; }
+
+        .history-list {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            text-align: left;
+        }
+
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            padding: 8px 0;
+            color: var(--text-dim);
+        }
+
+        .history-item b { color: var(--accent); }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <div id="mainCard" class="card">
+        <div class="header">
+            <span id="badge" class="status-pill">
+                <i class="bi bi-broadcast"></i> <span id="statusText">STANDBY</span>
+            </span>
+        </div>
+
+        <div class="timer-container">
+            <div id="timer" class="timer-value">0.00</div>
+            <div class="unit">SEGUNDOS</div>
+        </div>
+
+        <div class="history-list" id="history">
+            <div style="font-size: 0.7rem; color: #475569; margin-bottom: 10px;">ÚLTIMAS DETECÇÕES</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let startTime;
+    let timerInterval;
+    let isRunning = false;
+    const historyLimit = 5;
+
+    function addHistory(val) {
+        const historyDiv = document.getElementById('history');
+        const newItem = document.createElement('div');
+        newItem.className = 'history-item';
+        const now = new Date().toLocaleTimeString();
+        newItem.innerHTML = `<span><i class="bi bi-clock-history"></i> ${now}</span> <b>${val}s</b>`;
+        historyDiv.insertBefore(newItem, historyDiv.children[1]);
+        if (historyDiv.children.length > historyLimit + 1) historyDiv.lastChild.remove();
+    }
+
+    async function fetchData() {
+        try {
+            const response = await fetch('/api/data');
+            const data = await response.json();
+            
+            const display = document.getElementById('timer');
+            const badge = document.getElementById('badge');
+            const statusText = document.getElementById('statusText');
+            const card = document.getElementById('mainCard');
+
+            if (data.status === "Cronometrando..." && !isRunning) {
+                isRunning = true;
+                startTime = Date.now();
+                card.classList.add('running');
+                badge.className = "status-pill active";
+                statusText.innerText = "CAPTURA ATIVA";
+                
+                timerInterval = setInterval(() => {
+                    const elapsed = (Date.now() - startTime) / 1000;
+                    display.innerText = elapsed.toFixed(2);
+                }, 45);
+            } 
+            else if (data.status === "Finalizado" && isRunning) {
+                isRunning = false;
+                clearInterval(timerInterval);
+                card.classList.remove('running');
+                badge.className = "status-pill done";
+                statusText.innerText = "CICLO COMPLETO";
+                display.innerText = data.tempo;
+                addHistory(data.tempo);
+            }
+        } catch (e) { console.log("Erro de comunicação."); }
+    }
+
+    setInterval(fetchData, 300);
+</script>
+
+</body>
+</html>
